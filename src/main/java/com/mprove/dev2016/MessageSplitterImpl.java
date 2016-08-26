@@ -1,21 +1,14 @@
 package com.mprove.dev2016;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.CharacterCodingException;
 import java.nio.charset.Charset;
-import java.nio.charset.CodingErrorAction;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringTokenizer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class MessageSplitterImpl implements MessageSplitter {
 
     private static final int GSM_SEGMENT_SIZE = 160;
     private static final int UTF_16_SEGMENT_SIZE = 70;
-    private static final Pattern GSM_CHARACTERS_PATTERN = Pattern.compile("^[A-Za-z0-9 \\r\\n@£$¥èéùìòÇØøÅå\u0394_\u03A6\u0393\u039B\u03A9\u03A0\u03A8\u03A3\u0398\u039EÆæßÉ!\"#$%&amp;'()*+,\\-./:;&lt;=&gt;?¡ÄÖÑÜ§¿äöñüà^{}\\\\\\[~\\]|\u20AC]*$");
-    private static final String GSM_14BIT_CHARACTERS = "\f^{}\\[~]€]";
 
     public String[] split(final String messageIn) {
         int segmentSize = UTF_16_SEGMENT_SIZE;
@@ -25,26 +18,31 @@ public class MessageSplitterImpl implements MessageSplitter {
         while (stringTokenizer.hasMoreTokens()) {
             String word = stringTokenizer.nextToken();
 
+            boolean gsm = false;
             if (segmentSize == UTF_16_SEGMENT_SIZE) {
-                Matcher matcher = GSM_CHARACTERS_PATTERN.matcher(currSegment.toString() + word);
-                if (matcher.matches()) {
+                if (isValidGSM(currSegment.toString() + word)) {
                     segmentSize = GSM_SEGMENT_SIZE;
+                    gsm = true;
                 }
             }
-
             boolean wordPut = false;
             while (!wordPut) {
                 int wordSize = word.length();
+                int currSegmentSize = currSegment.length();
+                if (gsm) {
+                    wordSize = getGsmStringSize(word);
+                    currSegmentSize = getGsmStringSize(currSegment.toString());
+                }
 
-                //Charset.forName("UTF-8").newEncoder().canEncode(messageIn)
-                isValidGSM(messageIn.getBytes());
-
-                if (currSegment.length() + wordSize <= segmentSize) {
+                if (currSegmentSize + wordSize <= segmentSize) {
                     currSegment.append(word + " ");
                     wordPut = true;
                 } else {
                     if (wordSize > segmentSize) {
-                        int segmentLengthLeft = segmentSize - currSegment.length();
+                        int segmentLengthLeft = segmentSize - currSegmentSize;
+                        if (gsm) {
+                            segmentLengthLeft = segmentSize - currSegmentSize - (wordSize - word.length());
+                        }
                         String firstWordPart = word.substring(0, segmentLengthLeft);
                         currSegment.append(firstWordPart);
                         word = word.substring(segmentLengthLeft);
@@ -63,13 +61,13 @@ public class MessageSplitterImpl implements MessageSplitter {
         return result;
     }
 
-    public boolean isValidGSM(final byte[] bytes) {
-        try {
-            Charset.forName("IBM930").newDecoder().decode(ByteBuffer.wrap(bytes));
-        } catch (CharacterCodingException e) {
-            return false;
-        }
-        return true;
+    private int getGsmStringSize(String str) {
+        return str.getBytes(Charset.forName("X-Gsm7Bit")).length;
+    }
+
+    public boolean isValidGSM(String str) {
+        String gsmStr = new String(str.getBytes(Charset.forName("X-Gsm7Bit")), Charset.forName("X-Gsm7Bit"));
+        return str.equals(gsmStr);
     }
 
 }
