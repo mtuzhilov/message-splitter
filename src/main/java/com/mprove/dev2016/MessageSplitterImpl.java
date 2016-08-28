@@ -27,11 +27,14 @@ public class MessageSplitterImpl implements MessageSplitter {
             }
             boolean wordPut = false;
             while (!wordPut) {
-                int wordSize = word.length();
-                int currSegmentSize = currSegment.length();
+                int wordSize;
+                int currSegmentSize;
                 if (gsm) {
                     wordSize = getGsmStringSize(word);
                     currSegmentSize = getGsmStringSize(currSegment.toString());
+                } else {
+                    wordSize = getUTF16StringSize(word);
+                    currSegmentSize = getUTF16StringSize(currSegment.toString());
                 }
 
                 if (currSegmentSize + wordSize <= segmentSize) {
@@ -39,10 +42,13 @@ public class MessageSplitterImpl implements MessageSplitter {
                     wordPut = true;
                 } else {
                     if (wordSize > segmentSize) {
-                        int segmentLengthLeft = segmentSize - currSegmentSize;
+                        int segmentLengthLeft;
                         if (gsm) {
                             segmentLengthLeft = segmentSize - currSegmentSize - (wordSize - word.length());
+                        } else {
+                            segmentLengthLeft = (Character.isLowSurrogate(word.charAt(segmentSize))) && segmentSize > 0 ? segmentSize - 1 : segmentSize;
                         }
+                      
                         String firstWordPart = word.substring(0, segmentLengthLeft);
                         currSegment.append(firstWordPart);
                         word = word.substring(segmentLengthLeft);
@@ -65,9 +71,13 @@ public class MessageSplitterImpl implements MessageSplitter {
         return str.getBytes(Charset.forName("X-Gsm7Bit")).length;
     }
 
-    public boolean isValidGSM(String str) {
+    private int getUTF16StringSize(String str) {
+        //using UTF-16LE little-endian, no byte-order marker added. Divide by 2 because of 2 byte characters
+        return (int) Math.ceil(str.getBytes(Charset.forName("UTF-16LE")).length / 2);
+    }
+
+    private boolean isValidGSM(String str) {
         String gsmStr = new String(str.getBytes(Charset.forName("X-Gsm7Bit")), Charset.forName("X-Gsm7Bit"));
         return str.equals(gsmStr);
     }
-
 }
